@@ -34,7 +34,7 @@ namespace Application.Handlers.AuthorHandlers
             var validationResult = validator.Validate(authorRequest);
             if (!validationResult.IsValid) throw new BadRequestException(validationResult);
 
-            var authorFromDB = await unitOfWork.Authors.GetById(id, token);
+            var authorFromDB = await unitOfWork.Authors.GetByIdWithBooks(id, token);
             if (authorFromDB == null) throw new NotFoundException("Author to update not found");
 
             token.ThrowIfCancellationRequested();
@@ -44,8 +44,21 @@ namespace Application.Handlers.AuthorHandlers
             authorFromDB.BirthDate = authorRequest.BirthDate == DateTime.MinValue? 
                 authorFromDB.BirthDate: authorRequest.BirthDate;
             authorFromDB.Country = authorRequest.Country ?? authorFromDB.Country;
-            authorFromDB.Books = mapper
+
+            foreach (var book in authorFromDB.Books)
+            {
+                await unitOfWork.Books.Delete(book, token);
+            }
+
+            var books = mapper
                 .Map<List<Book>>(JsonConvert.DeserializeObject<List<BookRequest>>(authorRequest.BooksJson));
+
+            foreach (var book in books)
+            {
+                await unitOfWork.Books.Add(book, token);
+            }
+            
+            authorFromDB.Books = books;
 
             if (authorRequest.Image != null)
             {
